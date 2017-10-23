@@ -135,7 +135,8 @@ export default function init (config) {
             in: 'query',
             name: '$sort',
             type: 'string'
-          }
+          },
+	  ...doc.parameters
           ],
           responses: {
             '200': {
