@@ -136,7 +136,7 @@ export default function init (config) {
             name: '$sort',
             type: 'string'
           },
-	  ...doc.parameters
+	        ...(doc.parameters || [])
           ],
           responses: {
             '200': {
