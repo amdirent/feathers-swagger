@@ -24,7 +24,11 @@ export default function init (config) {
       produces: ['application/json'],
       info: {},
       ignore: {
-        tags: []
+        tags: [],
+        paths: null
+      },
+      match: {
+        paths: /.*/
       }
     }, config || {});
 
@@ -73,10 +77,14 @@ export default function init (config) {
     app.docs = rootDoc;
 
     // Optional: Register this plugin as a Feathers provider
-    app.providers.push(function (path, service) {
+    app.providers.push(function (originalPath, service) {
+      const args = originalPath.match(/:[a-zA-Z]+/g) || [];
       service.docs = service.docs || {};
 
       // Load documentation from service, if available.
+      const strippedPath = originalPath.replace(config.strip, '');
+      // Take args like :someId and turn them into {someId}
+      const path = args.reduce((p, arg) => p.replace(arg, `{${arg.replace(':', '')}}`), strippedPath);
       const doc = service.docs;
       const idName = service.id || 'id';
       const idType = doc.idType || 'integer';
@@ -85,14 +93,25 @@ export default function init (config) {
       const apiPath = path.replace(config.prefix, '');
       const group = apiPath.split('/');
       const tag = (apiPath.indexOf('/') > -1 ? group[0] : apiPath) + version;
-      const model = apiPath.indexOf('/') > -1 ? group[1] : apiPath;
+      const model = apiPath.indexOf('/') > -1 ? group.slice(-1)[0] : apiPath;
       const security = {};
 
       if (rootDoc.security) {
         security[rootDoc.security.name] = [];
       }
 
-      if (rootDoc.ignore.tags.indexOf(tag) > -1) {
+      // Path must match match > paths.
+      if (!originalPath.match(rootDoc.match.paths)) {
+        return;
+      }
+
+      // Path must not match ignore > paths
+      if (originalPath.match(rootDoc.ignore.paths)) {
+        return;
+      }
+
+      const ignoreTags = rootDoc.ignore.tags;
+      if (ignoreTags && ignoreTags.indexOf(tag) > -1) {
         return;
       }
 
@@ -102,8 +121,8 @@ export default function init (config) {
       const securities = doc.securities || [];
 
       if (typeof doc.definition !== 'undefined') {
-        rootDoc.definitions[tag] = doc.definition;
-        rootDoc.definitions[`${tag} list`] = {
+        rootDoc.definitions[model] = doc.definition;
+        rootDoc.definitions[`${model} list`] = {
           type: 'array',
           items: doc.definition
         };
@@ -111,6 +130,13 @@ export default function init (config) {
       if (typeof doc.definitions !== 'undefined') {
         rootDoc.definitions = Object.assign(rootDoc.definitions, doc.definitions);
       }
+
+      const baseParams = args.map(arg => ({
+        in: 'path',
+        required: true,
+        name: arg,
+        type: 'string'
+      }));
 
       // FIND
       if (typeof service.find === 'function') {
@@ -136,13 +162,14 @@ export default function init (config) {
             name: '$sort',
             type: 'string'
           },
-	        ...(doc.parameters || [])
+	          ...(doc.parameters || []),
+            ...baseParams
           ],
           responses: {
             '200': {
               description: 'success',
               schema: {
-                '$ref': '#/definitions/' + `${tag} list`
+                '$ref': '#/definitions/' + `${model} list`
               }
             },
             '500': {
@@ -170,12 +197,12 @@ export default function init (config) {
             required: true,
             name: idName,
             type: idType
-          }],
+          }, ...baseParams],
           responses: {
             '200': {
               description: 'success',
               schema: {
-                '$ref': '#/definitions/' + tag
+                '$ref': '#/definitions/' + model
               }
             },
             '500': {
@@ -204,9 +231,9 @@ export default function init (config) {
             name: 'body',
             required: true,
             schema: {
-              '$ref': '#/definitions/' + tag
+              '$ref': '#/definitions/' + model
             }
-          }],
+          }, ...baseParams],
           responses: {
             '201': {
               description: 'created'
@@ -240,14 +267,14 @@ export default function init (config) {
             name: 'body',
             required: true,
             schema: {
-              '$ref': '#/definitions/' + tag
+              '$ref': '#/definitions/' + model
             }
-          }],
+          }, ...baseParams],
           responses: {
             '200': {
               description: 'success',
               schema: {
-                '$ref': '#/definitions/' + tag
+                '$ref': '#/definitions/' + model
               }
             },
             '500': {
@@ -282,14 +309,14 @@ export default function init (config) {
             name: 'body',
             required: true,
             schema: {
-              '$ref': '#/definitions/' + tag
+              '$ref': '#/definitions/' + model
             }
-          }],
+          }, ...baseParams],
           responses: {
             '200': {
               description: 'success',
               schema: {
-                '$ref': '#/definitions/' + tag
+                '$ref': '#/definitions/' + model
               }
             },
             '500': {
@@ -325,7 +352,7 @@ export default function init (config) {
             '200': {
               description: 'success',
               schema: {
-                '$ref': '#/definitions/' + tag
+                '$ref': '#/definitions/' + model
               }
             },
             '500': {
